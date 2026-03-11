@@ -1,0 +1,27 @@
+name: tissueslice
+channels:
+  - defaults
+dependencies:
+  # Python
+  - python=3.11
+
+  # Web framework & core
+  - flask
+  - flask-cors
+
+  # Core numerical & image processing
+  - numpy
+  - scipy
+  - scikit-image
+  - opencv
+  - pillow
+
+  # HDF5 output
+  - h5py
+
+  # Compression & codecs
+  - imagecodecs
+
+  # Development tools
+  - pip
+  - setuptools

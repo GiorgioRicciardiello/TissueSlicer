@@ -1,0 +1,25 @@
+# TissueSlicer — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web Framework
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Core Numerical & Image Processing
+numpy>=1.24.0
+scipy>=1.10.0
+scikit-image>=0.22.0
+opencv-python>=4.8.0
+
+# OME-TIFF I/O & Metadata
+tifffile>=2024.2.0
+zarr>=2.16.0
+ome-types>=0.5.0
+
+# HDF5 Output with Compression
+h5py>=3.0.0
+hdf5plugin>=4.0.0
+
+# Image Display & Utilities
+Pillow>=9.0.0
+imagecodecs>=2024.0.0  # Compression codecs for tifffile (LZW, JPEG2000, etc.)

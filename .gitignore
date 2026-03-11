@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.venv/
+venv/
+
+# Extracted tissue outputs (large files)
+extracted_tissues/
+
+# Logs
+*.log
+tissue_selection.log
+
+# OS
+.DS_Store
+Thumbs.db

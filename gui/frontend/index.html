@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tissue Selection GUI - OrionVascularImg</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>Interactive Tissue Selection GUI</h1>
+                <p id="image-info" class="image-info">No image loaded</p>
+            </div>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="container">
+            <!-- Left Panel: Controls -->
+            <div class="left-panel">
+                <!-- File Input -->
+                <section class="panel-section">
+                    <h3>Image File</h3>
+                    <div class="input-group">
+                        <input type="text" id="image-path" placeholder="/path/to/image.ome.tiff" />
+                        <button id="btn-load-image" class="btn btn-primary">Load Image</button>
+                    </div>
+                    <div id="load-status" class="status-message"></div>
+                </section>
+
+                <!-- Channel Selector -->
+                <section class="panel-section">
+                    <h3>Channel</h3>
+                    <div class="channel-selector">
+                        <select id="channel-select">
+                            <option value="0">01_Nucleus_Hoechst</option>
+                            <option value="1">02_AF1</option>
+                            <option value="2">03_ArgoFluor520</option>
+                            <option value="3">04_Ki-67_ArgoFluor555L</option>
+                            <option value="4">05_IBA1_ArgoFluor548</option>
+                            <option value="5">06_AF2</option>
+                            <option value="6">07_AT8_ArgoFluor660L</option>
+                            <option value="7">08_C4a_ArgoFluor572</option>
+                            <option value="8">09_FN1_ArgoFluor602</option>
+                            <option value="9">10_VEGFR3_ArgoFluor624</option>
+                            <option value="10">11_OLIG2_ArgoFluor662</option>
+                            <option value="11">12_MGP_ArgoFluor676</option>
+                            <option value="12">13_FABP4_ArgoFluor698</option>
+                            <option value="13">14_NOTCH3_ArgoFluor706</option>
+                            <option value="14">15_SMOC1_ArgoFluor724</option>
+                            <option value="15">16_CD31_ArgoFluor760</option>
+                            <option value="16">17_CD105_ArgoFluor782</option>
+                            <option value="17">18_SMA_ArgoFluor812</option>
+                            <option value="18">19_GFAP_ArgoFluor845</option>
+                            <option value="19">20_ArgoFluor874</option>
+                        </select>
+                    </div>
+                </section>
+
+                <!-- Drawing Tools -->
+                <section class="panel-section">
+                    <h3>Drawing Tools</h3>
+                    <div class="tool-buttons">
+                        <button id="btn-polygon" class="tool-btn active" data-tool="polygon" title="Click vertices, double-click to close">
+                            ◻ Polygon
+                        </button>
+                        <button id="btn-rectangle" class="tool-btn" data-tool="rectangle" title="Click-drag to draw rectangle">
+                            ▭ Rectangle
+                        </button>
+                        <button id="btn-clear-polygon" class="tool-btn btn-danger" title="Clear current polygon">
+                            ✕ Clear Polygon
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Polygon Info -->
+                <section class="panel-section">
+                    <h3>Polygon Info</h3>
+                    <div class="info-box">
+                        <p>Vertices: <span id="vertex-count">0</span></p>
+                        <p>Area (px): <span id="area-px">—</span></p>
+                        <p>Area (µm²): <span id="area-um2">—</span></p>
+                    </div>
+                </section>
+
+                <!-- Padding Controls -->
+                <section class="panel-section">
+                    <h3>Extraction Settings</h3>
+                    <div class="control-row">
+                        <label for="padding-slider">Padding (px):</label>
+                        <input type="range" id="padding-slider" min="0" max="200" value="50" />
+                        <span id="padding-value">50</span>
+                    </div>
+                    <div class="control-row checkbox">
+                        <input type="checkbox" id="force-square-check" />
+                        <label for="force-square-check">Force Square</label>
+                    </div>
+                </section>
+
+                <!-- Save Selection -->
+                <section class="panel-section">
+                    <h3>Save Selection</h3>
+                    <div class="input-group">
+                        <input type="text" id="selection-name" placeholder="e.g., cortex" />
+                        <button id="btn-save-selection" class="btn btn-success">Save</button>
+                    </div>
+                </section>
+
+                <!-- Export Controls -->
+                <section class="panel-section">
+                    <h3>Batch Operations</h3>
+                    <div class="button-group">
+                        <button id="btn-extract-all" class="btn btn-primary btn-large">Extract All</button>
+                        <button id="btn-clear-session" class="btn btn-danger">Clear All Selections</button>
+                    </div>
+                </section>
+
+                <!-- Status Log -->
+                <section class="panel-section">
+                    <h3>Status</h3>
+                    <div id="status-log" class="status-log"></div>
+                </section>
+            </div>
+
+            <!-- Center Panel: Canvas -->
+            <div class="center-panel">
+                <div class="canvas-container">
+                    <canvas id="canvas"></canvas>
+                    <div id="zoom-info" class="zoom-info">
+                        Zoom: <span id="zoom-level">1.0</span>x | Pan: <span id="pan-info">0, 0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Selections List -->
+            <div class="right-panel">
+                <section class="panel-section selections-panel">
+                    <h3>Selections (<span id="selection-count">0</span>)</h3>
+                    <div id="selections-list" class="selections-list">
+                        <div class="empty-message">No selections yet</div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Modal for Extraction Progress -->
+        <div id="extraction-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>Extraction in Progress</h2>
+                <p class="extraction-hint">Regions run in parallel — progress updates every second.</p>
+                <div id="extraction-progress" class="progress-container">
+                    <!-- Overall + per-region progress rows inserted by JS -->
+                </div>
+                <div id="extraction-status" class="extraction-status"></div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
