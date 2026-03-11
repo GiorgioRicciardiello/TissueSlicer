@@ -169,9 +169,51 @@ Frontend (Browser)          Backend (Flask)             Storage
 
 ---
 
+## Citation
+
+If you use TissueSlicer in your research, please cite it as:
+
+**BibTeX:**
+```bibtex
+@software{TissueSlicer2026,
+  title={TissueSlicer: Interactive Tissue Region Extraction from Large Multiplex Fluorescence Images},
+  author={Ricciardiello Mejia, Giorgio},
+  year={2026},
+  url={https://github.com/mssm/TissueSlicer},
+  organization={Icahn School of Medicine at Mount Sinai},
+  note={Department of Neurology}
+}
+```
+
+**APA:**
+```
+Ricciardiello Mejia, G. (2026). TissueSlicer: Interactive tissue region extraction from
+large multiplex fluorescence images [Computer software]. Icahn School of Medicine at Mount Sinai,
+Department of Neurology. https://github.com/mssm/TissueSlicer
+```
+
+---
+
 ## License
 
-TissueSlicer is developed at Mount Sinai School of Medicine for research purposes.
+**© 2026 Giorgio Ricciardiello Mejia & Icahn School of Medicine at Mount Sinai**
+**Department of Neurology**
+
+TissueSlicer is licensed under the **MIT License** with the following requirements:
+
+- ✅ **Academic & research use**: FREE — no restrictions
+- ✅ **Commercial use**: Allowed, but **MUST cite** this work
+- ✅ **Modification & redistribution**: Allowed with attribution
+- ❌ **Use without attribution**: Not permitted in publications
+
+### What This Means
+
+Any published research, thesis, or report using TissueSlicer **must include**:
+1. Citation to this software (see citation examples above)
+2. Acknowledgment of Mount Sinai development
+3. Link to this repository (if distributed)
+
+This ensures proper scientific attribution and allows us to track impact.
 
 ---
 

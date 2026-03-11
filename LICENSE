@@ -1,0 +1,49 @@
+MIT License with Attribution Requirement
+
+Copyright (c) 2026 Icahn School of Medicine at Mount Sinai
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+ATTRIBUTION REQUIREMENT:
+Any use of this software in academic publications, theses, dissertations,
+technical reports, or any other dissemination of research results MUST include:
+
+1. A citation to the original TissueSlicer software
+2. Acknowledgment of Icahn School of Medicine at Mount Sinai as the developer
+3. A reference to this repository (URL)
+
+Recommended citation format:
+  BibTeX: @software{TissueSlicer2026, title={TissueSlicer: Interactive Tissue
+  Region Extraction from Large Multiplex Fluorescence Images}, author={...},
+  year={2026}, url={[repository-url]}, organization={Icahn School of Medicine
+  at Mount Sinai}}
+
+COMMERCIAL USE:
+Commercial use is permitted under the same attribution requirements. Any
+software, service, or product incorporating TissueSlicer must acknowledge
+this contribution in documentation and/or publications.
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+AUTHOR:
+Giorgio Ricciardiello Mejia
+Department of Neurology
+Icahn School of Medicine at Mount Sinai
+
+For questions or to report usage, contact: giorgio.ricciardiellomeia@mountsinai.org
