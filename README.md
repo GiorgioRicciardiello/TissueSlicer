@@ -61,6 +61,7 @@ Then open **http://localhost:5000** in your browser.
 ---
 
 ## Demo
+See demo video in `static_git/TissueSlicerShorter720.mp4`
 
 <div align="center">
   <video width="720" height="480" controls>
