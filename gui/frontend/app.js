@@ -21,6 +21,32 @@
 
 const API_BASE = '';   // same origin — Flask serves both API and frontend
 
+// QuPath-style default colors for multi-channel visualization
+const QUPATH_DEFAULT_COLORS = [
+    [0, 229, 255],   // 0  — cyan (Hoechst)
+    [255, 255, 0],   // 1  — yellow
+    [255, 0, 255],   // 2  — magenta
+    [255, 0, 0],     // 3  — red
+    [0, 255, 0],     // 4  — green
+    [255, 127, 0],   // 5  — orange
+    [127, 0, 255],   // 6  — purple
+    [0, 255, 255],   // 7  — cyan2
+    [255, 255, 127], // 8  — lime
+    [255, 0, 127],   // 9  — hot pink
+    [0, 127, 255],   // 10 — sky blue
+    [255, 200, 0],   // 11 — gold
+    [0, 255, 127],   // 12 — spring green
+    [200, 0, 255],   // 13 — violet
+    [255, 80, 80],   // 14 — salmon
+    [80, 255, 160],  // 15 — mint
+    [160, 80, 255],  // 16 — lavender
+    [255, 160, 80],  // 17 — peach
+    [80, 255, 255],  // 18 — ice blue
+    [255, 255, 200], // 19 — cream
+];
+
+const BLANK_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
 // ============================================================================
 // API Client
 // ============================================================================
@@ -38,6 +64,10 @@ const api = {
         api._request('POST', '/api/load-image', { image_path: path, channel_idx: ch }),
     getChannel: (ts, ch) =>
         api._request('POST', '/api/get-channel', { timestamp: ts, channel_idx: ch }),
+    getCalibration: (ts, ch) =>
+        api._request('POST', '/api/get-calibration', { timestamp: ts, channel_idx: ch }),
+    getComposite: (ts, channels) =>
+        api._request('POST', '/api/get-composite', { timestamp: ts, channels }),
     previewMask: (ts, coords, pad, sq) =>
         api._request('POST', '/api/preview-mask', {
             timestamp: ts, polygon_coords: coords, padding_px: pad, force_square: sq }),
@@ -273,6 +303,12 @@ const state = {
     scaleX: 1,
     imagePath: '',
     selections: [],
+    channelConfigs: [],  // array of 20 config objects: {index, name, enabled, color, displayMin, displayMax, calibrated}
+    // Backward-compat getter — used by extraction path, not display path
+    get currentChannel() {
+        const en = this.channelConfigs.filter(c => c.enabled);
+        return en.length ? en[0].index : 0;
+    },
 };
 
 // ============================================================================
@@ -317,6 +353,69 @@ function toast(msg, cls = 'info') {
 function setStatus(el, msg, cls) {
     el.textContent = msg;
     el.className = `status-message ${cls}`;
+}
+
+// ============================================================================
+// Channel Configuration Helpers
+// ============================================================================
+
+function initChannelConfigs(channelNames) {
+    return channelNames.map((name, i) => ({
+        index: i, name,
+        enabled: i === 0,  // only first channel (Hoechst) enabled by default
+        color: [...QUPATH_DEFAULT_COLORS[i % QUPATH_DEFAULT_COLORS.length]],
+        displayMin: 0, displayMax: 4095, calibrated: false,
+    }));
+}
+
+function rgbToHex([r, g, b]) {
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function showCompositeLoading(visible) {
+    const el = $('composite-loading');
+    if (el) el.classList.toggle('hidden', !visible);
+}
+
+// ============================================================================
+// Composite Update Flow
+// ============================================================================
+
+let compositeDebounce = null;
+let scheduleCompositeUpdate = null;  // Will be assigned in DOMContentLoaded
+let fetchAndRenderComposite = null;  // Will be assigned in DOMContentLoaded
+let autoCalibrateAll = null;         // Will be assigned in DOMContentLoaded
+
+function buildChannelPanel(configs) {
+    const list = $('channel-list');
+    if (!list) return;  // Panel not yet in DOM
+
+    list.innerHTML = configs.map(c => {
+        const colorHex = rgbToHex(c.color);
+        const shortName = c.name.replace(/^\d+_/, '').slice(0, 14);
+        return `<div class="channel-row${c.enabled ? '' : ' ch-disabled'}" data-channel="${c.index}">
+            <input type="checkbox" class="ch-enable" ${c.enabled ? 'checked' : ''} />
+            <label class="ch-swatch" style="background:rgb(${c.color.join(',')})">
+                <input type="color" class="ch-color-picker" value="${colorHex}" />
+            </label>
+            <span class="ch-name" title="${escapeHtml(c.name)}">${escapeHtml(shortName)}</span>
+            <div class="ch-sliders">
+                <input type="range" class="ch-min" min="0" max="4095" value="${c.displayMin}" />
+                <input type="range" class="ch-max" min="0" max="4095" value="${c.displayMax}" />
+            </div>
+            <span class="ch-range-label">${c.displayMin}–${c.displayMax}</span>
+        </div>`;
+    }).join('');
+}
+
+function refreshChannelPanelSliders() {
+    state.channelConfigs.forEach(c => {
+        const row = document.querySelector(`[data-channel="${c.index}"]`);
+        if (!row) return;
+        row.querySelector('.ch-min').value = c.displayMin;
+        row.querySelector('.ch-max').value = c.displayMax;
+        row.querySelector('.ch-range-label').textContent = `${c.displayMin}–${c.displayMax}`;
+    });
 }
 
 // ============================================================================
@@ -390,6 +489,71 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---- padding / force-square ----
     const getPad = () => parseInt($('padding-slider').value, 10);
     const getSq  = () => $('force-square-check').checked;
+
+    // ============================================================
+    // Composite Update Functions (need access to renderer, polygon, drawingState)
+    // ============================================================
+
+    scheduleCompositeUpdate = function() {
+        clearTimeout(compositeDebounce);
+        compositeDebounce = setTimeout(fetchAndRenderComposite, 300);
+    };
+
+    fetchAndRenderComposite = async function() {
+        if (!state.timestamp) return;
+        showCompositeLoading(true);
+        try {
+            const enabled = state.channelConfigs.filter(c => c.enabled);
+            if (!enabled.length) {
+                await renderer.loadImage(BLANK_PNG);
+                return;
+            }
+
+            const r = await api.getComposite(state.timestamp,
+                enabled.map(c => ({
+                    index: c.index, enabled: true, color: c.color,
+                    display_min: c.displayMin, display_max: c.displayMax,
+                }))
+            );
+            await renderer.loadImage(r.image_base64);
+            renderer.setPolygon(polygon);
+            renderer.drawingState = drawingState;
+            renderer.render();
+        } catch (e) {
+            toast(`Composite error: ${e.message}`, 'error');
+            log(`Composite error: ${e.message}`, 'error');
+        } finally {
+            showCompositeLoading(false);
+        }
+    };
+
+    autoCalibrateAll = async function() {
+        if (!state.timestamp) {
+            toast('Load an image first', 'warning');
+            return;
+        }
+        const targets = state.channelConfigs.filter(c => c.enabled && !c.calibrated);
+        if (!targets.length) {
+            scheduleCompositeUpdate();
+            return;
+        }
+
+        log(`Auto-calibrating ${targets.length} channels...`);
+        const results = await Promise.allSettled(
+            targets.map(c => api.getCalibration(state.timestamp, c.index)
+                .then(r => ({ index: c.index, displayMin: Math.round(r.p2), displayMax: Math.round(r.p98) })))
+        );
+
+        state.channelConfigs = state.channelConfigs.map(c => {
+            const hit = results.find(r => r.status === 'fulfilled' && r.value.index === c.index);
+            return hit ? { ...c, displayMin: hit.value.displayMin, displayMax: hit.value.displayMax, calibrated: true } : c;
+        });
+
+        refreshChannelPanelSliders();
+        scheduleCompositeUpdate();
+        const ok = results.filter(r => r.status === 'fulfilled').length;
+        log(`Auto-calibrated ${ok}/${targets.length} channels`);
+    };
 
     // ============================================================
     // Drawing state machine
@@ -517,14 +681,18 @@ document.addEventListener('DOMContentLoaded', () => {
         $('btn-load-image').disabled = true;
 
         try {
-            const ch = parseInt($('channel-select').value, 10);
-            const r = await api.loadImage(path, ch);
+            const r = await api.loadImage(path, 0);  // Load with channel 0 for placeholder
 
             state.timestamp = r.timestamp;
             state.scaleY   = r.scale_y;
             state.scaleX   = r.scale_x;
             state.imagePath = path;
 
+            // Initialize multi-channel configs
+            state.channelConfigs = initChannelConfigs(r.channels);
+            buildChannelPanel(state.channelConfigs);
+
+            // Show grayscale placeholder immediately
             await renderer.loadImage(r.image_base64);
             polygon = [];
             setDrawingState('IDLE');
@@ -534,11 +702,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ` | Full res: ${r.shape_full[2]}x${r.shape_full[1]}` +
                 ` | Scale: ${r.scale_y.toFixed(2)}x`;
 
-            if (r.channels && r.channels.length) {
-                const sel = $('channel-select');
-                sel.innerHTML = r.channels.map((ch, i) =>
-                    `<option value="${i}">${ch}</option>`).join('');
-            }
+            // Fetch composite with auto-calibration (async, will replace placeholder when done)
+            autoCalibrateAll();
 
             setStatus(statusEl, 'Image loaded', 'success');
             log(`Loaded: ${path.split('\\').pop()} — ${r.num_channels} channels`);
@@ -900,8 +1065,51 @@ document.addEventListener('DOMContentLoaded', () => {
     $('btn-load-image').addEventListener('click', loadImage);
     $('image-path').addEventListener('keydown', e => { if (e.key === 'Enter') loadImage(); });
 
-    $('channel-select').addEventListener('change', e =>
-        switchChannel(parseInt(e.target.value, 10)));
+    // ============================================================
+    // Multi-channel panel event delegation
+    // ============================================================
+
+    const channelList = $('channel-list');
+    if (channelList) {
+        channelList.addEventListener('change', e => {
+            const row = e.target.closest('[data-channel]');
+            if (!row) return;
+            const idx = parseInt(row.dataset.channel, 10);
+            const cfg = state.channelConfigs[idx];
+
+            if (e.target.classList.contains('ch-enable')) {
+                state.channelConfigs[idx] = { ...cfg, enabled: e.target.checked };
+                row.classList.toggle('ch-disabled', !e.target.checked);
+                scheduleCompositeUpdate();
+            } else if (e.target.classList.contains('ch-color-picker')) {
+                const hex = e.target.value;
+                const color = [
+                    parseInt(hex.slice(1, 3), 16),
+                    parseInt(hex.slice(3, 5), 16),
+                    parseInt(hex.slice(5, 7), 16),
+                ];
+                state.channelConfigs[idx] = { ...cfg, color };
+                row.querySelector('.ch-swatch').style.background = `rgb(${color.join(',')})`;
+                scheduleCompositeUpdate();
+            }
+        });
+
+        channelList.addEventListener('input', e => {
+            const row = e.target.closest('[data-channel]');
+            if (!row || (!e.target.classList.contains('ch-min') && !e.target.classList.contains('ch-max'))) return;
+            const idx = parseInt(row.dataset.channel, 10);
+            const cfg = state.channelConfigs[idx];
+            const minEl = row.querySelector('.ch-min');
+            const maxEl = row.querySelector('.ch-max');
+            const displayMin = parseInt(minEl.value, 10);
+            const displayMax = parseInt(maxEl.value, 10);
+            state.channelConfigs[idx] = { ...cfg, displayMin, displayMax };
+            row.querySelector('.ch-range-label').textContent = `${displayMin}–${displayMax}`;
+            scheduleCompositeUpdate();
+        });
+    }
+
+    $('btn-auto-calibrate-all').addEventListener('click', autoCalibrateAll);
 
     $('btn-polygon').addEventListener('click', () => setTool('polygon'));
     $('btn-rectangle').addEventListener('click', () => setTool('rectangle'));

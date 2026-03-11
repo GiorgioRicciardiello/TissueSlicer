@@ -30,32 +30,18 @@
                     <div id="load-status" class="status-message"></div>
                 </section>
 
-                <!-- Channel Selector -->
+                <!-- Multi-Channel Composite Panel -->
                 <section class="panel-section">
-                    <h3>Channel</h3>
-                    <div class="channel-selector">
-                        <select id="channel-select">
-                            <option value="0">01_Nucleus_Hoechst</option>
-                            <option value="1">02_AF1</option>
-                            <option value="2">03_ArgoFluor520</option>
-                            <option value="3">04_Ki-67_ArgoFluor555L</option>
-                            <option value="4">05_IBA1_ArgoFluor548</option>
-                            <option value="5">06_AF2</option>
-                            <option value="6">07_AT8_ArgoFluor660L</option>
-                            <option value="7">08_C4a_ArgoFluor572</option>
-                            <option value="8">09_FN1_ArgoFluor602</option>
-                            <option value="9">10_VEGFR3_ArgoFluor624</option>
-                            <option value="10">11_OLIG2_ArgoFluor662</option>
-                            <option value="11">12_MGP_ArgoFluor676</option>
-                            <option value="12">13_FABP4_ArgoFluor698</option>
-                            <option value="13">14_NOTCH3_ArgoFluor706</option>
-                            <option value="14">15_SMOC1_ArgoFluor724</option>
-                            <option value="15">16_CD31_ArgoFluor760</option>
-                            <option value="16">17_CD105_ArgoFluor782</option>
-                            <option value="17">18_SMA_ArgoFluor812</option>
-                            <option value="18">19_GFAP_ArgoFluor845</option>
-                            <option value="19">20_ArgoFluor874</option>
-                        </select>
+                    <h3>Channels</h3>
+                    <div class="channel-panel-header">
+                        <button id="btn-auto-calibrate-all" class="btn btn-secondary btn-sm"
+                                title="Set min/max from 2nd–98th percentile for all enabled channels">
+                            ⚙ Auto-Calibrate All
+                        </button>
+                        <span id="composite-loading" class="composite-spinner hidden">rendering…</span>
+                    </div>
+                    <div id="channel-list" class="channel-list">
+                        <!-- Populated by buildChannelPanel() on image load -->
                     </div>
                 </section>
 

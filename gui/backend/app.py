@@ -323,6 +323,145 @@ def load_image():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/get-calibration', methods=['POST'])
+def get_calibration():
+    """
+    Get contrast/brightness calibration for a channel.
+
+    Uses percentile-based stretching (2-98) optimized for scientific imaging.
+
+    Request JSON:
+    {
+        "channel_idx": 0,
+        "timestamp": "session-id"
+    }
+
+    Response JSON:
+    {
+        "channel": 0,
+        "name": "01_Nucleus_Hoechst",
+        "p2": 150.5,
+        "p98": 3200.2,
+        "min": 0.0,
+        "max": 4095.0,
+        "mean": 1250.3,
+        "suggested_display_range": [150, 3200]
+    }
+    """
+    try:
+        data = request.json
+        timestamp = data.get('timestamp')
+        channel_idx = data.get('channel_idx', 0)
+
+        session = session_manager.get_session(timestamp)
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+
+        loader = session['loader']
+
+        # Check if we already have calibration cached in session
+        cached_cal = session_manager.get_channel_calibration(timestamp, channel_idx)
+        if cached_cal:
+            calibration = cached_cal
+            logger.debug(f"Using cached calibration for channel {channel_idx}")
+        else:
+            # Compute calibration from loader
+            calibration = loader.get_channel_calibration(channel_idx)
+            # Store in session for next time
+            session_manager.set_channel_calibration(timestamp, channel_idx, calibration)
+
+        # Get channel name
+        channel_names = loader.get_channel_names()
+        channel_name = channel_names[channel_idx] if channel_idx < len(channel_names) else f"Channel {channel_idx}"
+
+        response = {
+            'channel': channel_idx,
+            'name': channel_name,
+            'p2': calibration['p2'],
+            'p98': calibration['p98'],
+            'min': calibration['min'],
+            'max': calibration['max'],
+            'mean': calibration['mean'],
+            'suggested_display_range': [int(calibration['p2']), int(calibration['p98'])]
+        }
+
+        logger.info(
+            f"Calibration for channel {channel_idx} ({channel_name}): "
+            f"p2={calibration['p2']:.1f}, p98={calibration['p98']:.1f}"
+        )
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        logger.error(f"Error getting calibration: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/get-composite', methods=['POST'])
+def get_composite():
+    """
+    Generate a multi-channel additive composite PNG.
+
+    Uses per-channel linear contrast stretch and additive color blending.
+    All compositing is done server-side in NumPy; the client receives only
+    the final uint8 RGB PNG.
+
+    Request JSON:
+    {
+        "timestamp": "session-id",
+        "channels": [
+            {"index": 0, "enabled": true, "color": [0, 229, 255],
+             "display_min": 150, "display_max": 3200},
+            ...
+        ]
+    }
+
+    Response JSON:
+    {
+        "image_base64": "data:image/png;base64,..."
+    }
+    """
+    try:
+        data = request.json
+        timestamp = data.get('timestamp')
+        channel_configs = data.get('channels', [])
+
+        if not timestamp:
+            return jsonify({'error': 'timestamp required'}), 400
+
+        session = session_manager.get_session(timestamp)
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+
+        loader = session['loader']
+        enabled = [c for c in channel_configs if c.get('enabled', False)]
+        if not enabled:
+            return jsonify({'error': 'No enabled channels'}), 400
+
+        for cfg in enabled:
+            if not (0 <= int(cfg.get('index', -1)) < loader.num_channels):
+                return jsonify({'error': f"Invalid channel index: {cfg.get('index')}"}), 400
+
+        import base64
+        import cv2
+
+        composite_bgr = loader.get_composite_display(enabled)
+        _, buffer = cv2.imencode('.png', composite_bgr)
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
+
+        logger.info(
+            f"Composite: {len(enabled)} channels, session {timestamp}"
+        )
+
+        return jsonify({
+            'image_base64': f'data:image/png;base64,{img_base64}'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Composite error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/channels', methods=['GET'])
 def get_channels():
     """
@@ -801,4 +940,4 @@ if __name__ == '__main__':
         webbrowser.open(f'http://localhost:{port}')
 
     threading.Thread(target=open_browser, daemon=True).start()
-    app.run(debug=False, use_reloader=False, host='0.0.0.0', port=port)
+    app.run(debug=False, use_reloader=False, threaded=True, host='0.0.0.0', port=port)

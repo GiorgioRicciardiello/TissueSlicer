@@ -62,6 +62,7 @@ class SessionManager:
             'scale_y': scale_y,
             'scale_x': scale_x,
             'selections': [],
+            'calibrations': {},  # Channel calibrations: {ch_idx: {p2, p98, min, max, mean}}
             'created_at': timestamp,
             'last_accessed': timestamp
         }
@@ -144,6 +145,39 @@ class SessionManager:
 
         session['selections'] = []
         logger.info(f"Session cleared: {timestamp}")
+
+    def set_channel_calibration(self, timestamp: str, channel_idx: int, calibration: Dict[str, Any]) -> None:
+        """
+        Store calibration for a channel in the session.
+
+        Args:
+            timestamp: Session ID
+            channel_idx: Channel index
+            calibration: Dict with keys p2, p98, min, max, mean
+        """
+        session = self.get_session(timestamp)
+        if not session:
+            raise ValueError(f"Session not found: {timestamp}")
+
+        session['calibrations'][channel_idx] = calibration
+        logger.debug(f"Calibration set for channel {channel_idx} in session {timestamp}")
+
+    def get_channel_calibration(self, timestamp: str, channel_idx: int) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve calibration for a channel from the session.
+
+        Args:
+            timestamp: Session ID
+            channel_idx: Channel index
+
+        Returns:
+            Calibration dict, or None if not found
+        """
+        session = self.get_session(timestamp)
+        if not session:
+            return None
+
+        return session.get('calibrations', {}).get(channel_idx)
 
     def cleanup_old_sessions(self) -> None:
         """

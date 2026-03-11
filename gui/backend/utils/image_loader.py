@@ -9,12 +9,57 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import sys
 
+import numpy as np
+
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from library.imaging import OmeTiffReader, extract_ome_metadata, get_pixel_size_um
 
 logger = logging.getLogger(__name__)
+
+
+def compute_channel_calibration(channel_data: np.ndarray) -> dict:
+    """
+    Compute contrast/brightness calibration for a single channel using percentile stretching.
+
+    Uses 2nd and 98th percentiles (industry standard in microscopy) to ignore outliers
+    while preserving dynamic range.
+
+    Args:
+        channel_data: uint16 numpy array (any shape)
+
+    Returns:
+        dict with keys:
+        - 'p2': 2nd percentile (suggested min display value)
+        - 'p98': 98th percentile (suggested max display value)
+        - 'min': actual minimum value in data
+        - 'max': actual maximum value in data
+        - 'mean': mean value (for reference)
+    """
+    if channel_data.size == 0:
+        # Return neutral calibration for empty channels
+        return {'p2': 0, 'p98': 255, 'min': 0, 'max': 255, 'mean': 128}
+
+    p2, p98 = np.percentile(channel_data, (2, 98))
+    min_val = float(np.min(channel_data))
+    max_val = float(np.max(channel_data))
+    mean_val = float(np.mean(channel_data))
+
+    calibration = {
+        'p2': float(p2),
+        'p98': float(p98),
+        'min': min_val,
+        'max': max_val,
+        'mean': mean_val,
+    }
+
+    logger.debug(
+        f"Channel calibration: p2={p2:.1f}, p98={p98:.1f}, "
+        f"min={min_val:.1f}, max={max_val:.1f}, mean={mean_val:.1f}"
+    )
+
+    return calibration
 
 
 class OmeTiffImageLoader:
@@ -52,6 +97,11 @@ class OmeTiffImageLoader:
         self.display_level = self._select_display_level()
 
         logger.info(f"Display level: {self.display_level}")
+
+        # Cache for channel calibrations (computed on-demand)
+        self._calibration_cache = {}
+        # Cache for display-level uint16 arrays (avoids repeated disk reads in compositing)
+        self._display_cache: dict[int, np.ndarray] = {}
 
     def _select_display_level(self, target_dim=2000):
         """
@@ -105,6 +155,64 @@ class OmeTiffImageLoader:
         )
 
         return img, (self.num_channels, self.height_full, self.width_full), scale_y, scale_x
+
+    def get_composite_display(self, channel_configs: list) -> np.ndarray:
+        """
+        Generate an additive composite RGB image from multiple channels.
+
+        For each enabled config: read uint16 display-level array (cached),
+        apply linear stretch [display_min, display_max] → [0, 1], multiply by
+        RGB tint color, and additively accumulate into a float32 BGR buffer.
+        Returns uint8 BGR ndarray (H, W, 3) ready for cv2.imencode.
+
+        Args:
+            channel_configs: list of dicts with keys:
+                - 'index' (int): channel index 0–19
+                - 'enabled' (bool): skip if False
+                - 'color' (list[int, int, int]): RGB tint color, 0–255 each
+                - 'display_min' (float): uint16 black point, clipped to [0, 65535]
+                - 'display_max' (float): uint16 white point, clipped to [0, 65535]
+
+        Returns:
+            uint8 ndarray of shape (H, W, 3) in BGR channel order (OpenCV convention),
+            ready for cv2.imencode('.png', ...).
+        """
+        # Get display level shape
+        _, h_display, w_display = self.reader.level_shape(self.display_level)
+        composite = np.zeros((h_display, w_display, 3), dtype=np.float32)  # BGR
+
+        for cfg in channel_configs:
+            if not cfg.get('enabled', False):
+                continue
+
+            idx = int(cfg['index'])
+            color = cfg.get('color', [255, 255, 255])
+            lo = float(max(0.0, cfg.get('display_min', 0)))
+            hi = float(min(65535.0, cfg.get('display_max', 4095)))
+            hi = max(lo + 1.0, hi)  # Guard against division by zero
+
+            # Read with cache (avoids repeated disk I/O after first composite)
+            if idx not in self._display_cache:
+                raw, _, _, _ = self.get_channel_downsampled(idx)
+                self._display_cache[idx] = raw
+            raw = self._display_cache[idx]
+
+            # Stretch uint16 → float32 [0, 1]
+            stretched = (raw.astype(np.float32) - lo) / (hi - lo)
+            np.clip(stretched, 0.0, 1.0, out=stretched)
+
+            # Apply RGB tint (additive blend into BGR accumulator)
+            r, g, b = color[0] / 255.0, color[1] / 255.0, color[2] / 255.0
+            composite[:, :, 0] += stretched * b  # OpenCV BGR order
+            composite[:, :, 1] += stretched * g
+            composite[:, :, 2] += stretched * r
+
+        np.clip(composite, 0.0, 1.0, out=composite)
+        logger.debug(
+            f"Composite generated: shape={composite.shape}, "
+            f"channels={len([c for c in channel_configs if c.get('enabled')])}"
+        )
+        return (composite * 255.0).astype(np.uint8)
 
     def get_level_shape(self, level=None):
         """
@@ -226,6 +334,36 @@ class OmeTiffImageLoader:
     def get_channel_names(self):
         """Get list of channel names."""
         return self.metadata.get('channel_names', [])
+
+    def get_channel_calibration(self, channel_idx: int) -> dict:
+        """
+        Get calibration (percentile stretching values) for a channel.
+
+        Computes calibration from the display-level image to be fast.
+        Results are cached.
+
+        Args:
+            channel_idx: Channel index (0 to num_channels-1)
+
+        Returns:
+            dict with keys: p2, p98, min, max, mean
+        """
+        if channel_idx in self._calibration_cache:
+            return self._calibration_cache[channel_idx]
+
+        # Load channel at display level for calibration
+        img, _, _, _ = self.get_channel_downsampled(channel_idx)
+
+        # Compute calibration
+        calibration = compute_channel_calibration(img)
+        self._calibration_cache[channel_idx] = calibration
+
+        logger.info(
+            f"Computed calibration for channel {channel_idx}: "
+            f"p2={calibration['p2']:.1f}, p98={calibration['p98']:.1f}"
+        )
+
+        return calibration
 
     def close(self):
         """Close the reader."""

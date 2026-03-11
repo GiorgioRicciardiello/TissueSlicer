@@ -57,3 +57,4 @@ if __name__ == '__main__':
 
     # input image path
     # C:\Users\riccig01\Documents\vascbrain\OrionImages\data\raw\FNEL03_CAD001_001\FNEL03_2026_V1_001703\FNEL03_CAD001_001_FNEL03_2026_V1_001703.ome.tiff
+
