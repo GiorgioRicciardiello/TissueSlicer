@@ -19,7 +19,7 @@ def check_deps():
     for pkg, imp in [
         ('flask',       'flask'),
         ('flask_cors',  'flask_cors'),
-        ('cv2',         'cv2'),
+        ('cv2',         'cv2'),\
         ('numpy',       'numpy'),
         ('scipy',       'scipy'),
         ('skimage',     'skimage'),
